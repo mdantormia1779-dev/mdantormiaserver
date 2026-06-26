@@ -26,6 +26,10 @@ const client = new MongoClient(uri, {
   },
 });
 
+// DB
+const db = client.db("mdantormia");
+const projectCollection = db.collection("projects");
+
 async function run() {
   try {
     await client.connect();
@@ -35,10 +39,6 @@ async function run() {
   }
 }
 run();
-
-// DB
-const db = client.db("mdantormia");
-const projectCollection = db.collection("projects");
 
 // Routes
 app.get("/", (req, res) => {
@@ -217,7 +217,6 @@ app.post("/api/visits", async (req, res) => {
     res.status(500).send({ success: false, message: "Visit count failed" });
   }
 });
-
 
 // Server
 app.listen(PORT, () => {
