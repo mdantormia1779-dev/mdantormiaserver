@@ -4,12 +4,11 @@ require("dotenv").config();
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
-// 🔥 Middleware
 app.use(
   cors({
-    origin: "*", // ⚠️ production এ specific domain দাও
+    origin: process.env.BETTER_AUTH_URL,
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
