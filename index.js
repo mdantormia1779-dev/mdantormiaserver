@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 require("dotenv").config();
 const cors = require("cors");
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { ObjectId } = require("mongodb");
 
 app.use(
   cors({
@@ -13,10 +13,9 @@ app.use(
 
 app.use(express.json());
 
-// 🔥 Port
 const PORT = process.env.PORT || 5000;
 
-// 🔥 MongoDB setup
+const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri = process.env.DB_URL;
 
 const client = new MongoClient(uri, {
@@ -27,46 +26,39 @@ const client = new MongoClient(uri, {
   },
 });
 
-// 🔥 DB connect function
-async function connectDB() {
+// DB
+const db = client.db("mdantormia");
+const projectCollection = db.collection("projects");
+
+async function run() {
   try {
     await client.connect();
-
-    const db = client.db("mdantormia");
-
-    app.locals.db = db;
-    app.locals.projectCollection = db.collection("projects");
-    app.locals.statsCollection = db.collection("stats");
-
     console.log("✅ MongoDB connected");
   } catch (error) {
-    console.error("❌ DB connection failed:", error);
+    console.error(error);
   }
 }
-connectDB();
+run();
 
-// 🔥 Root route
+// Routes
 app.get("/", (req, res) => {
-  res.send("🚀 Server is running");
+  res.send("Server is running 🚀");
 });
 
-// 🔥 Health check
-app.get("/health", (req, res) => {
-  res.send("OK");
-});
-
-// ============================
-// 🔥 PROJECT ROUTES
-// ============================
-
-// ➕ Create Project
+// project api
 app.post("/projects", async (req, res) => {
   try {
-    const projectCollection = req.app.locals.projectCollection;
-
     const { image, name, description, tech, github, live } = req.body;
 
-    if (!image || !name || !description || !tech?.length || !github || !live) {
+    if (
+      !image ||
+      !name ||
+      !description ||
+      !tech ||
+      tech.length === 0 ||
+      !github ||
+      !live
+    ) {
       return res.status(400).send({
         success: false,
         message: "All fields are required ❌",
@@ -99,20 +91,16 @@ app.post("/projects", async (req, res) => {
   }
 });
 
-// 📥 Get All Projects
 app.get("/projects", async (req, res) => {
   try {
-    const projectCollection = req.app.locals.projectCollection;
-
-    const projects = await projectCollection
+    const project = await projectCollection
       .find()
       .sort({ createdAt: -1 })
       .toArray();
-
     res.send({
       success: true,
-      count: projects.length,
-      data: projects,
+      count: project.length,
+      data: project,
     });
   } catch (error) {
     res.status(500).send({
@@ -123,20 +111,14 @@ app.get("/projects", async (req, res) => {
   }
 });
 
-// ✏️ Update Project
+// update project api
+
 app.put("/projects/:id", async (req, res) => {
   try {
-    const projectCollection = req.app.locals.projectCollection;
     const id = req.params.id;
+    const updateData = req.body;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid ID ❌",
-      });
-    }
-
-    const { _id, ...rest } = req.body;
+    const { _id, ...rest } = updateData;
 
     const result = await projectCollection.findOneAndUpdate(
       { _id: new ObjectId(id) },
@@ -146,35 +128,26 @@ app.put("/projects/:id", async (req, res) => {
           updatedAt: new Date(),
         },
       },
-      { returnDocument: "after" }
+      { returnDocument: "after" }, // 🔥 VERY IMPORTANT
     );
 
     res.send({
       success: true,
-      message: "Project updated successfully ✏️",
-      data: result.value,
+      message: "project updated successfully",
+      data: result.value, // ✅ FULL UPDATED DOC
     });
   } catch (error) {
     res.status(500).send({
       success: false,
-      message: "Update failed",
+      message: "update failed",
       error: error.message,
     });
   }
 });
 
-// ❌ Delete Project
 app.delete("/projects/:id", async (req, res) => {
   try {
-    const projectCollection = req.app.locals.projectCollection;
     const id = req.params.id;
-
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid ID ❌",
-      });
-    }
 
     const result = await projectCollection.deleteOne({
       _id: new ObjectId(id),
@@ -183,13 +156,14 @@ app.delete("/projects/:id", async (req, res) => {
     if (result.deletedCount === 0) {
       return res.status(404).send({
         success: false,
-        message: "Project not found ❌",
+        message: "Project not found ",
       });
     }
 
     res.send({
       success: true,
-      message: "Project deleted successfully 🗑️",
+      message: "Project deleted successfully ",
+      data: result,
     });
   } catch (error) {
     res.status(500).send({
@@ -200,58 +174,23 @@ app.delete("/projects/:id", async (req, res) => {
   }
 });
 
-// ============================
-// 📊 STATS ROUTES
-// ============================
-
-// ➕ CV Download Count
+// CV ডাউনলোড কাউন্ট করার জন্য
 app.post("/downloads", async (req, res) => {
-  try {
-    const statsCollection = req.app.locals.statsCollection;
-
-    await statsCollection.updateOne(
-      { type: "CV" },
-      { $inc: { count: 1 } },
-      { upsert: true }
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).send({ success: false });
-  }
+  const result = await db
+    .collection("stats")
+    .updateOne({ type: "CV" }, { $inc: { count: 1 } }, { upsert: true });
+  res.json({ success: true });
 });
 
-// ➕ Visit Count
-app.post("/api/visits", async (req, res) => {
-  try {
-    const statsCollection = req.app.locals.statsCollection;
-
-    await statsCollection.updateOne(
-      { type: "SITE_VISITS" },
-      { $inc: { count: 1 } },
-      { upsert: true }
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).send({ success: false });
-  }
-});
-
-// 📊 Get Stats
 app.get("/api/stats", async (req, res) => {
   try {
-    const projectCollection = req.app.locals.projectCollection;
-    const statsCollection = req.app.locals.statsCollection;
-
+    // ১. প্রজেক্টের মোট সংখ্যা
     const totalProjects = await projectCollection.countDocuments();
 
-    const stats = await statsCollection.find().toArray();
-
-    const siteVisits =
-      stats.find((s) => s.type === "SITE_VISITS")?.count || 0;
-    const cvDownloads =
-      stats.find((s) => s.type === "CV")?.count || 0;
+    // ২. ভিজিট এবং ডাউনলোড কাউন্ট
+    const stats = await db.collection("stats").find().toArray();
+    const siteVisits = stats.find((s) => s.type === "SITE_VISITS")?.count || 0;
+    const cvDownloads = stats.find((s) => s.type === "CV")?.count || 0;
 
     res.json({
       success: true,
@@ -260,29 +199,26 @@ app.get("/api/stats", async (req, res) => {
       cvDownloads,
     });
   } catch (error) {
-    res.status(500).send({
-      success: false,
-      message: "Failed to fetch stats",
-    });
+    res.status(500).send({ success: false, message: "Failed to fetch stats" });
   }
 });
 
-// ============================
-// 🔥 GLOBAL ERROR HANDLER
-// ============================
-
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
+app.post("/api/visits", async (req, res) => {
+  try {
+    const result = await db
+      .collection("stats")
+      .updateOne(
+        { type: "SITE_VISITS" },
+        { $inc: { count: 1 } },
+        { upsert: true },
+      );
+    res.json({ success: true, message: "Visit recorded" });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Visit count failed" });
+  }
 });
 
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled Rejection:", err);
-});
-
-// ============================
-// 🚀 SERVER START
-// ============================
-
+// Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
